@@ -2,6 +2,8 @@
 
 import tkinter as tk
 from tkinter import ttk, messagebox
+import customtkinter as ctk
+from tkcalendar import DateEntry
 
 from controller.aparato_controller import listar_aparatos
 from controller.cliente_controller import crear_cliente, listar_clientes
@@ -10,6 +12,7 @@ from controller.sesion_controller import (
     listar_sesiones_dia,
     obtener_ocupacion_diaria,
     cancelar_sesion,
+    exportar_sesiones_pdf
 )
 from controller.recibo_controller import (
     generar_recibos_mes,
@@ -18,34 +21,45 @@ from controller.recibo_controller import (
 )
 from controller.pago_controller import registrar_pago
 
+# Configuración global de CustomTkinter
+ctk.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
+ctk.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 
-# ========== SUBVISTAS (FRAMES) ==========
 
-class AparatosView(ttk.Frame):
-    title = "Aparatos"
-
+class AparatosView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
 
+        # Título
+        lbl_title = ctk.CTkLabel(self, text="Gestión de Aparatos", font=("Roboto", 20, "bold"))
+        lbl_title.pack(pady=10)
+
+        # Treeview (Tabla) - Se mantiene ttk.Treeview porque ctk no tiene tabla nativa aún
         columns = ("id", "codigo", "tipo", "descripcion")
         self.tree_aparatos = ttk.Treeview(
-            self, columns=columns, show="headings", height=20
+            self, columns=columns, show="headings", height=15
         )
         self.tree_aparatos.heading("id", text="ID")
         self.tree_aparatos.heading("codigo", text="Código")
         self.tree_aparatos.heading("tipo", text="Tipo")
         self.tree_aparatos.heading("descripcion", text="Descripción")
+        
         self.tree_aparatos.column("id", width=50, anchor="center")
         self.tree_aparatos.column("codigo", width=100)
         self.tree_aparatos.column("tipo", width=150)
         self.tree_aparatos.column("descripcion", width=400)
 
-        self.tree_aparatos.pack(fill="both", expand=True, padx=10, pady=10)
+        # Style for Treeview
+        style = ttk.Style()
+        style.configure("Treeview", font=("Arial", 10), rowheight=25)
+        style.configure("Treeview.Heading", font=("Arial", 10, "bold"))
 
-        btn_recargar = tk.Button(
-            self, text="Recargar aparatos", command=self.cargar_aparatos
+        self.tree_aparatos.pack(fill="both", expand=True, padx=20, pady=10)
+
+        btn_recargar = ctk.CTkButton(
+            self, text="Recargar Lista", command=self.cargar_aparatos
         )
-        btn_recargar.pack(pady=5)
+        btn_recargar.pack(pady=10)
 
         self.cargar_aparatos()
 
@@ -61,50 +75,62 @@ class AparatosView(ttk.Frame):
             )
 
 
-class ClientesView(ttk.Frame):
-    title = "Clientes"
-
+class ClientesView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
 
-        # Formulario alta
-        frame_form = ttk.LabelFrame(self, text="Alta de cliente")
-        frame_form.pack(fill="x", padx=10, pady=10)
+        # --- Formulario Alta ---
+        frame_form = ctk.CTkFrame(self)
+        frame_form.pack(fill="x", padx=20, pady=10)
+        
+        lbl_form = ctk.CTkLabel(frame_form, text="Alta de Cliente", font=("Roboto", 16, "bold"))
+        lbl_form.grid(row=0, column=0, columnspan=4, pady=(10, 10))
 
-        tk.Label(frame_form, text="DNI:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        tk.Label(frame_form, text="Nombre:").grid(row=0, column=2, padx=5, pady=5, sticky="e")
-        tk.Label(frame_form, text="Apellido:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-        tk.Label(frame_form, text="Email:").grid(row=1, column=2, padx=5, pady=5, sticky="e")
-        tk.Label(frame_form, text="Teléfono:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
-        tk.Label(frame_form, text="Fecha alta (YYYY-MM-DD):").grid(row=2, column=2, padx=5, pady=5, sticky="e")
+        # Fila 1
+        ctk.CTkLabel(frame_form, text="DNI:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+        self.entry_dni = ctk.CTkEntry(frame_form, width=150)
+        self.entry_dni.grid(row=1, column=1, padx=10, pady=5)
 
-        self.entry_dni = tk.Entry(frame_form, width=15)
-        self.entry_nombre = tk.Entry(frame_form, width=15)
-        self.entry_apellido = tk.Entry(frame_form, width=15)
-        self.entry_email = tk.Entry(frame_form, width=20)
-        self.entry_telefono = tk.Entry(frame_form, width=15)
-        self.entry_fecha_alta = tk.Entry(frame_form, width=15)
+        ctk.CTkLabel(frame_form, text="Nombre:").grid(row=1, column=2, padx=10, pady=5, sticky="e")
+        self.entry_nombre = ctk.CTkEntry(frame_form, width=150)
+        self.entry_nombre.grid(row=1, column=3, padx=10, pady=5)
 
-        self.entry_dni.grid(row=0, column=1, padx=5, pady=5)
-        self.entry_nombre.grid(row=0, column=3, padx=5, pady=5)
-        self.entry_apellido.grid(row=1, column=1, padx=5, pady=5)
-        self.entry_email.grid(row=1, column=3, padx=5, pady=5)
-        self.entry_telefono.grid(row=2, column=1, padx=5, pady=5)
-        self.entry_fecha_alta.grid(row=2, column=3, padx=5, pady=5)
+        # Fila 2
+        ctk.CTkLabel(frame_form, text="Apellido:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
+        self.entry_apellido = ctk.CTkEntry(frame_form, width=150)
+        self.entry_apellido.grid(row=2, column=1, padx=10, pady=5)
 
-        btn_alta = tk.Button(frame_form, text="Crear cliente", command=self.crear_cliente_gui)
-        btn_alta.grid(row=3, column=0, columnspan=4, pady=10)
+        ctk.CTkLabel(frame_form, text="Email:").grid(row=2, column=2, padx=10, pady=5, sticky="e")
+        self.entry_email = ctk.CTkEntry(frame_form, width=200)
+        self.entry_email.grid(row=2, column=3, padx=10, pady=5)
 
-        # Listado
-        frame_list = ttk.LabelFrame(self, text="Listado de clientes")
-        frame_list.pack(fill="both", expand=True, padx=10, pady=10)
+        # Fila 3
+        ctk.CTkLabel(frame_form, text="Teléfono:").grid(row=3, column=0, padx=10, pady=5, sticky="e")
+        self.entry_telefono = ctk.CTkEntry(frame_form, width=150)
+        self.entry_telefono.grid(row=3, column=1, padx=10, pady=5)
+
+        ctk.CTkLabel(frame_form, text="Fecha Alta:").grid(row=3, column=2, padx=10, pady=5, sticky="e")
+        # Widget DateEntry de tkcalendar
+        self.entry_fecha_alta = DateEntry(frame_form, width=12, background='darkblue',
+                                          foreground='white', borderwidth=2, date_pattern='yyyy-mm-dd')
+        self.entry_fecha_alta.grid(row=3, column=3, padx=10, pady=5, sticky="w")
+
+        btn_alta = ctk.CTkButton(frame_form, text="Crear Cliente", command=self.crear_cliente_gui)
+        btn_alta.grid(row=4, column=0, columnspan=4, pady=15)
+
+        # --- Listado ---
+        frame_list = ctk.CTkFrame(self)
+        frame_list.pack(fill="both", expand=True, padx=20, pady=10)
+
+        lbl_list = ctk.CTkLabel(frame_list, text="Listado de Clientes", font=("Roboto", 14, "bold"))
+        lbl_list.pack(pady=5)
 
         columns = ("id", "dni", "nombre", "apellido", "email", "telefono", "fecha_alta")
         self.tree_clientes = ttk.Treeview(
-            frame_list, columns=columns, show="headings", height=15
+            frame_list, columns=columns, show="headings", height=10
         )
         for col, text in zip(columns, ["ID", "DNI", "Nombre", "Apellido",
-                                       "Email", "Teléfono", "Fecha alta"]):
+                                       "Email", "Teléfono", "Fecha Alta"]):
             self.tree_clientes.heading(col, text=text)
 
         self.tree_clientes.column("id", width=40, anchor="center")
@@ -115,10 +141,10 @@ class ClientesView(ttk.Frame):
         self.tree_clientes.column("telefono", width=100)
         self.tree_clientes.column("fecha_alta", width=100, anchor="center")
 
-        self.tree_clientes.pack(fill="both", expand=True, padx=5, pady=5)
+        self.tree_clientes.pack(fill="both", expand=True, padx=10, pady=5)
 
-        btn_recargar_clientes = tk.Button(
-            frame_list, text="Recargar clientes", command=self.cargar_clientes
+        btn_recargar_clientes = ctk.CTkButton(
+            frame_list, text="Recargar Lista", command=self.cargar_clientes
         )
         btn_recargar_clientes.pack(pady=5)
 
@@ -130,7 +156,7 @@ class ClientesView(ttk.Frame):
         apellido = self.entry_apellido.get().strip()
         email = self.entry_email.get().strip() or None
         telefono = self.entry_telefono.get().strip() or None
-        fecha_alta = self.entry_fecha_alta.get().strip()
+        fecha_alta = self.entry_fecha_alta.get_date().strftime("%Y-%m-%d")
 
         if not dni or not nombre or not apellido or not fecha_alta:
             messagebox.showerror("Error", "DNI, nombre, apellido y fecha de alta son obligatorios.")
@@ -142,6 +168,7 @@ class ClientesView(ttk.Frame):
             self.entry_dni.delete(0, tk.END)
             self.entry_nombre.delete(0, tk.END)
             self.entry_apellido.delete(0, tk.END)
+            # self.entry_email.delete(0, tk.END) # CTKEntry doesn't support delete 0, END like that? wait it does
             self.entry_email.delete(0, tk.END)
             self.entry_telefono.delete(0, tk.END)
             self.cargar_clientes()
@@ -161,62 +188,80 @@ class ClientesView(ttk.Frame):
             )
 
 
-class ReservasView(ttk.Frame):
-    title = "Reservas"
-
+class ReservasView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
 
-        # Formulario reserva
-        frame_form = ttk.LabelFrame(self, text="Crear reserva")
-        frame_form.pack(fill="x", padx=10, pady=10)
+        # --- Crear Reserva ---
+        frame_form = ctk.CTkFrame(self)
+        frame_form.pack(fill="x", padx=20, pady=10)
 
-        tk.Label(frame_form, text="ID aparato:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        tk.Label(frame_form, text="ID cliente:").grid(row=0, column=2, padx=5, pady=5, sticky="e")
-        tk.Label(frame_form, text="Fecha (YYYY-MM-DD):").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-        tk.Label(frame_form, text="Hora (HH:MM, 00 o 30):").grid(row=1, column=2, padx=5, pady=5, sticky="e")
+        ctk.CTkLabel(frame_form, text="Nueva Reserva", font=("Roboto", 16, "bold")).grid(row=0, column=0, columnspan=4, pady=10)
 
-        self.entry_res_aparato = tk.Entry(frame_form, width=10)
-        self.entry_res_cliente = tk.Entry(frame_form, width=10)
-        self.entry_res_fecha = tk.Entry(frame_form, width=12)
-        self.entry_res_hora = tk.Entry(frame_form, width=8)
+        ctk.CTkLabel(frame_form, text="ID Aparato:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+        self.entry_res_aparato = ctk.CTkEntry(frame_form, width=80)
+        self.entry_res_aparato.grid(row=1, column=1, padx=10, pady=5, sticky="w")
 
-        self.entry_res_aparato.grid(row=0, column=1, padx=5, pady=5)
-        self.entry_res_cliente.grid(row=0, column=3, padx=5, pady=5)
-        self.entry_res_fecha.grid(row=1, column=1, padx=5, pady=5)
-        self.entry_res_hora.grid(row=1, column=3, padx=5, pady=5)
+        ctk.CTkLabel(frame_form, text="ID Cliente:").grid(row=1, column=2, padx=10, pady=5, sticky="e")
+        self.entry_res_cliente = ctk.CTkEntry(frame_form, width=80)
+        self.entry_res_cliente.grid(row=1, column=3, padx=10, pady=5, sticky="w")
 
-        btn_crear_reserva = tk.Button(
-            frame_form, text="Crear reserva", command=self.crear_reserva_gui
+        ctk.CTkLabel(frame_form, text="Fecha:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
+        self.entry_res_fecha = DateEntry(frame_form, width=12, background='darkblue',
+                                         foreground='white', borderwidth=2, date_pattern='yyyy-mm-dd')
+        self.entry_res_fecha.grid(row=2, column=1, padx=10, pady=5, sticky="w")
+
+        ctk.CTkLabel(frame_form, text="Hora (HH:MM):").grid(row=2, column=2, padx=10, pady=5, sticky="e")
+        self.entry_res_hora = ctk.CTkEntry(frame_form, width=80, placeholder_text="09:00")
+        self.entry_res_hora.grid(row=2, column=3, padx=10, pady=5, sticky="w")
+
+        btn_crear_reserva = ctk.CTkButton(
+            frame_form, text="Confirmar Reserva", command=self.crear_reserva_gui
         )
-        btn_crear_reserva.grid(row=2, column=0, columnspan=4, pady=10)
+        btn_crear_reserva.grid(row=3, column=0, columnspan=4, pady=15)
 
-        # Listado de sesiones
-        frame_list = ttk.LabelFrame(self, text="Sesiones de un día")
-        frame_list.pack(fill="both", expand=True, padx=10, pady=10)
+        # --- Listado de Sesiones / Exportar ---
+        frame_list = ctk.CTkFrame(self)
+        frame_list.pack(fill="both", expand=True, padx=20, pady=10)
 
-        top = ttk.Frame(frame_list)
-        top.pack(fill="x", padx=5, pady=5)
+        # Controles superiores lista
+        top = ctk.CTkFrame(frame_list, fg_color="transparent")
+        top.pack(fill="x", padx=10, pady=5)
 
-        tk.Label(top, text="Fecha (YYYY-MM-DD):").pack(side="left")
-        self.entry_list_fecha = tk.Entry(top, width=12)
+        ctk.CTkLabel(top, text="Ver sesiones del día:").pack(side="left", padx=5)
+        self.entry_list_fecha = DateEntry(top, width=12, background='darkblue',
+                                          foreground='white', borderwidth=2, date_pattern='yyyy-mm-dd')
         self.entry_list_fecha.pack(side="left", padx=5)
-        btn_cargar_sesiones = tk.Button(
-            top, text="Cargar sesiones", command=self.cargar_sesiones_dia_gui
+        
+        btn_cargar_sesiones = ctk.CTkButton(
+            top, text="Cargar", width=80, command=self.cargar_sesiones_dia_gui
         )
         btn_cargar_sesiones.pack(side="left", padx=5)
 
-        tk.Label(top, text="   ID sesión a cancelar:").pack(side="left")
-        self.entry_cancel_sesion = tk.Entry(top, width=6)
+        btn_exportar_pdf = ctk.CTkButton(
+            top, text="Exportar PDF", width=100, fg_color="green", hover_color="darkgreen",
+            command=self.exportar_pdf_gui
+        )
+        btn_exportar_pdf.pack(side="left", padx=20)
+
+        # Cancelar sesión
+        frame_cancel = ctk.CTkFrame(frame_list, fg_color="transparent")
+        frame_cancel.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(frame_cancel, text="ID Sesión a cancelar:").pack(side="left", padx=5)
+        self.entry_cancel_sesion = ctk.CTkEntry(frame_cancel, width=60)
         self.entry_cancel_sesion.pack(side="left", padx=5)
-        btn_cancelar = tk.Button(
-            top, text="Cancelar sesión", command=self.cancelar_sesion_gui
+        
+        btn_cancelar = ctk.CTkButton(
+            frame_cancel, text="Cancelar", width=80, fg_color="red", hover_color="darkred",
+            command=self.cancelar_sesion_gui
         )
         btn_cancelar.pack(side="left", padx=5)
 
+        # Treeview Sesiones
         columns = ("id", "aparato", "cliente", "fecha", "hora")
         self.tree_sesiones = ttk.Treeview(
-            frame_list, columns=columns, show="headings", height=15
+            frame_list, columns=columns, show="headings", height=10
         )
         for col, text in zip(columns, ["ID", "Aparato", "Cliente", "Fecha", "Hora"]):
             self.tree_sesiones.heading(col, text=text)
@@ -227,24 +272,17 @@ class ReservasView(ttk.Frame):
         self.tree_sesiones.column("fecha", width=100, anchor="center")
         self.tree_sesiones.column("hora", width=80, anchor="center")
 
-        self.tree_sesiones.pack(fill="both", expand=True, padx=5, pady=5)
+        self.tree_sesiones.pack(fill="both", expand=True, padx=10, pady=5)
 
-        # Ocupación detallada
-        frame_ocu = ttk.LabelFrame(self, text="Ocupación detallada")
-        frame_ocu.pack(fill="both", expand=True, padx=10, pady=10)
+        # --- Ocupación Detallada (Texto) ---
+        frame_ocu = ctk.CTkFrame(self)
+        frame_ocu.pack(fill="both", expand=True, padx=20, pady=10)
 
-        top2 = ttk.Frame(frame_ocu)
-        top2.pack(fill="x", padx=5, pady=5)
-        tk.Label(top2, text="Fecha (YYYY-MM-DD):").pack(side="left")
-        self.entry_ocu_fecha = tk.Entry(top2, width=12)
-        self.entry_ocu_fecha.pack(side="left", padx=5)
-        btn_ocu = tk.Button(
-            top2, text="Ver ocupación", command=self.ver_ocupacion_gui
-        )
-        btn_ocu.pack(side="left", padx=5)
+        ctk.CTkLabel(frame_ocu, text="Vista Detallada de Ocupación").pack(pady=5)
+        
+        self.text_ocupacion = ctk.CTkTextbox(frame_ocu, height=100)
+        self.text_ocupacion.pack(fill="both", expand=True, padx=10, pady=5)
 
-        self.text_ocupacion = tk.Text(frame_ocu, height=8)
-        self.text_ocupacion.pack(fill="both", expand=True, padx=5, pady=5)
 
     def crear_reserva_gui(self):
         try:
@@ -254,18 +292,20 @@ class ReservasView(ttk.Frame):
             messagebox.showerror("Error", "ID de aparato y cliente deben ser números.")
             return
 
-        fecha = self.entry_res_fecha.get().strip()
+        fecha = self.entry_res_fecha.get_date().strftime("%Y-%m-%d")
         hora = self.entry_res_hora.get().strip()
 
         try:
             sesion = crear_sesion(aparato_id, cliente_id, fecha, hora, None)
             messagebox.showinfo("Éxito", f"Sesión creada con ID {sesion.sesion_id}")
-            self.cargar_sesiones_dia_gui()
+            # Actualizar listado si es para el mismo día
+            if self.entry_list_fecha.get_date().strftime("%Y-%m-%d") == fecha:
+                 self.cargar_sesiones_dia_gui()
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo crear la sesión:\n{e}")
 
     def cargar_sesiones_dia_gui(self):
-        fecha = self.entry_list_fecha.get().strip()
+        fecha = self.entry_list_fecha.get_date().strftime("%Y-%m-%d")
         for row in self.tree_sesiones.get_children():
             self.tree_sesiones.delete(row)
 
@@ -275,6 +315,9 @@ class ReservasView(ttk.Frame):
                 "", "end",
                 values=(s.sesion_id, s.aparato_id, s.cliente_id, s.fecha, s.hora_inicio)
             )
+        
+        # También actualizar el texto de ocupación
+        self.ver_ocupacion_gui(fecha)
 
     def cancelar_sesion_gui(self):
         try:
@@ -289,8 +332,7 @@ class ReservasView(ttk.Frame):
         else:
             messagebox.showerror("Error", "No se encontró la sesión.")
 
-    def ver_ocupacion_gui(self):
-        fecha = self.entry_ocu_fecha.get().strip()
+    def ver_ocupacion_gui(self, fecha):
         ocupacion = obtener_ocupacion_diaria(fecha)
         self.text_ocupacion.delete("1.0", tk.END)
         if not ocupacion:
@@ -299,68 +341,79 @@ class ReservasView(ttk.Frame):
 
         for o in ocupacion:
             linea = (
-                f"[{o['sesion_id']}] {o['fecha']} {o['hora_inicio']} | "
+                f"[{o['sesion_id']}] {o['hora_inicio']} | "
                 f"Aparato {o['aparato_codigo']} ({o['aparato_tipo']}) | "
                 f"Cliente {o['cliente_id']} - {o['cliente_nombre']} {o['cliente_apellido']}\n"
             )
             self.text_ocupacion.insert(tk.END, linea)
 
+    def exportar_pdf_gui(self):
+        fecha = self.entry_list_fecha.get_date().strftime("%Y-%m-%d")
+        try:
+            filename = exportar_sesiones_pdf(fecha)
+            messagebox.showinfo("PDF Exportado", f"Se ha generado el archivo:\n{filename}")
+        except Exception as e:
+            messagebox.showerror("Error Exportación", f"No se pudo generar el PDF:\n{e}")
 
-class CobrosView(ttk.Frame):
-    title = "Cobros"
 
+class CobrosView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
 
-        # Generar recibos
-        frame_gen = ttk.LabelFrame(self, text="Generar recibos mensuales")
-        frame_gen.pack(fill="x", padx=10, pady=10)
+        # --- Generar Recibos ---
+        frame_gen = ctk.CTkFrame(self)
+        frame_gen.pack(fill="x", padx=20, pady=10)
 
-        tk.Label(frame_gen, text="Año (YYYY):").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        tk.Label(frame_gen, text="Mes (1-12):").grid(row=0, column=2, padx=5, pady=5, sticky="e")
-        tk.Label(frame_gen, text="Importe cuota:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        ctk.CTkLabel(frame_gen, text="Generación de Recibos", font=("Roboto", 16, "bold")).grid(row=0, column=0, columnspan=4, pady=10)
 
-        self.entry_any_rec = tk.Entry(frame_gen, width=6)
-        self.entry_mes_rec = tk.Entry(frame_gen, width=4)
-        self.entry_imp_rec = tk.Entry(frame_gen, width=8)
+        ctk.CTkLabel(frame_gen, text="Año:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+        self.entry_any_rec = ctk.CTkEntry(frame_gen, width=80)
+        self.entry_any_rec.grid(row=1, column=1, padx=10, pady=5, sticky="w")
+        
+        ctk.CTkLabel(frame_gen, text="Mes (1-12):").grid(row=1, column=2, padx=10, pady=5, sticky="e")
+        self.entry_mes_rec = ctk.CTkEntry(frame_gen, width=50)
+        self.entry_mes_rec.grid(row=1, column=3, padx=10, pady=5, sticky="w")
 
-        self.entry_any_rec.grid(row=0, column=1, padx=5, pady=5)
-        self.entry_mes_rec.grid(row=0, column=3, padx=5, pady=5)
-        self.entry_imp_rec.grid(row=1, column=1, padx=5, pady=5)
+        ctk.CTkLabel(frame_gen, text="Importe Cuota:").grid(row=2, column=0, padx=10, pady=5, sticky="e")
+        self.entry_imp_rec = ctk.CTkEntry(frame_gen, width=80)
+        self.entry_imp_rec.grid(row=2, column=1, padx=10, pady=5, sticky="w")
 
-        btn_gen = tk.Button(frame_gen, text="Generar recibos", command=self.generar_recibos_gui)
-        btn_gen.grid(row=2, column=0, columnspan=4, pady=10)
+        btn_gen = ctk.CTkButton(frame_gen, text="Generar Recibos Mensuales", command=self.generar_recibos_gui)
+        btn_gen.grid(row=3, column=0, columnspan=4, pady=15)
 
-        # Listar recibos + registrar pago + morosos
-        frame_list = ttk.LabelFrame(self, text="Recibos y pagos")
-        frame_list.pack(fill="both", expand=True, padx=10, pady=10)
+        # --- Listar y Pagar ---
+        frame_list = ctk.CTkFrame(self)
+        frame_list.pack(fill="both", expand=True, padx=20, pady=10)
 
-        top = ttk.Frame(frame_list)
+        top = ctk.CTkFrame(frame_list, fg_color="transparent")
         top.pack(fill="x", padx=5, pady=5)
 
-        tk.Label(top, text="Año (YYYY):").pack(side="left")
-        self.entry_any_list = tk.Entry(top, width=6)
+        self.entry_any_list = ctk.CTkEntry(top, width=60, placeholder_text="YYYY")
         self.entry_any_list.pack(side="left", padx=5)
-
-        tk.Label(top, text="Mes (1-12):").pack(side="left")
-        self.entry_mes_list = tk.Entry(top, width=4)
+        
+        self.entry_mes_list = ctk.CTkEntry(top, width=40, placeholder_text="MM")
         self.entry_mes_list.pack(side="left", padx=5)
 
-        btn_listar = tk.Button(top, text="Listar recibos", command=self.listar_recibos_gui)
-        btn_listar.pack(side="left", padx=5)
+        btn_listar = ctk.CTkButton(top, text="Listar", width=80, command=self.listar_recibos_gui)
+        btn_listar.pack(side="left", padx=10)
 
-        tk.Label(top, text="   ID recibo para pago:").pack(side="left")
-        self.entry_recibo_pagar = tk.Entry(top, width=6)
+        ctk.CTkLabel(top, text="|").pack(side="left", padx=5)
+
+        self.entry_recibo_pagar = ctk.CTkEntry(top, width=60, placeholder_text="ID Recibo")
         self.entry_recibo_pagar.pack(side="left", padx=5)
-        btn_pagar = tk.Button(top, text="Registrar pago", command=self.registrar_pago_gui)
+        
+        btn_pagar = ctk.CTkButton(top, text="Registrar Pago", width=120, fg_color="green", hover_color="darkgreen",
+                                  command=self.registrar_pago_gui)
         btn_pagar.pack(side="left", padx=5)
 
-        btn_morosos = tk.Button(top, text="Ver morosos", command=self.listar_morosos_gui)
-        btn_morosos.pack(side="right", padx=5)
+        btn_morosos = ctk.CTkButton(top, text="Ver Morosos", fg_color="red", hover_color="darkred",
+                                    command=self.listar_morosos_gui)
+        btn_morosos.pack(side="right", padx=10)
 
+        # Treeview Recibos
         columns = ("id", "cliente", "anyo", "mes", "importe", "estado")
         self.tree_recibos = ttk.Treeview(
-            frame_list, columns=columns, show="headings", height=15
+            frame_list, columns=columns, show="headings", height=12
         )
         for col, text in zip(columns, ["ID", "Cliente", "Año", "Mes", "Importe", "Estado"]):
             self.tree_recibos.heading(col, text=text)
@@ -372,7 +425,7 @@ class CobrosView(ttk.Frame):
         self.tree_recibos.column("importe", width=80, anchor="center")
         self.tree_recibos.column("estado", width=80, anchor="center")
 
-        self.tree_recibos.pack(fill="both", expand=True, padx=5, pady=5)
+        self.tree_recibos.pack(fill="both", expand=True, padx=10, pady=5)
 
     def generar_recibos_gui(self):
         try:
@@ -439,26 +492,32 @@ class CobrosView(ttk.Frame):
         messagebox.showinfo("Morosos", texto)
 
 
-# ========== VISTA PRINCIPAL (APP) ==========
-
-class App(tk.Tk):
+class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("GestiónGym - Administrador")
-        self.geometry("1100x650")
+        self.geometry("1100x700")
 
-        # Notebook (pestañas)
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True)
+        # TabView (Pestañas modernas de CTK)
+        self.tabview = ctk.CTkTabview(self, width=1100, height=650)
+        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Array de vistas hijas
-        self.views = [
-            AparatosView(self.notebook),
-            ClientesView(self.notebook),
-            ReservasView(self.notebook),
-            CobrosView(self.notebook),
-        ]
+        # Crear Pestañas
+        self.tabview.add("Aparatos")
+        self.tabview.add("Clientes")
+        self.tabview.add("Reservas")
+        self.tabview.add("Cobros")
 
-        # Añadir cada vista como pestaña
-        for view in self.views:
-            self.notebook.add(view, text=view.title)
+        # Instanciar las vistas dentro de cada pestaña
+        # self.tabview.tab("Nombre") actúa como el master (Frame)
+        self.view_aparatos = AparatosView(self.tabview.tab("Aparatos"))
+        self.view_aparatos.pack(fill="both", expand=True)
+
+        self.view_clientes = ClientesView(self.tabview.tab("Clientes"))
+        self.view_clientes.pack(fill="both", expand=True)
+
+        self.view_reservas = ReservasView(self.tabview.tab("Reservas"))
+        self.view_reservas.pack(fill="both", expand=True)
+
+        self.view_cobros = CobrosView(self.tabview.tab("Cobros"))
+        self.view_cobros.pack(fill="both", expand=True)

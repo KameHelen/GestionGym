@@ -3,6 +3,9 @@
 from datetime import datetime
 from model.conexion import crear_conexion
 from model.sesion import Sesion
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+
 
 
 # ---------- VALIDACIONES DE NEGOCIO ----------
@@ -216,3 +219,47 @@ def obtener_ocupacion_diaria(fecha: str):
         conn.close()
 
     return resultados
+
+
+def exportar_sesiones_pdf(fecha: str) -> str:
+    """
+    Genera un PDF con el listado de sesiones para la fecha indicada.
+    Devuelve el nombre del archivo generado.
+    """
+    ocupacion = obtener_ocupacion_diaria(fecha)
+    filename = f"sesiones_{fecha}.pdf"
+
+    c = canvas.Canvas(filename, pagesize=A4)
+    width, height = A4
+
+    # Encabezado
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, height - 50, f"Listado de Sesiones - GymForTheMoment")
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 70, f"Fecha: {fecha}")
+
+    # Tabla (encabezados)
+    y = height - 100
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(50, y, "Hora")
+    c.drawString(100, y, "Aparato")
+    c.drawString(250, y, "Tipo")
+    c.drawString(350, y, "Cliente")
+
+    y -= 20
+    c.setFont("Helvetica", 10)
+
+    for o in ocupacion:
+        if y < 50:
+            c.showPage()
+            y = height - 50
+
+        c.drawString(50, y, o['hora_inicio'])
+        c.drawString(100, y, o['aparato_codigo'])
+        c.drawString(250, y, o['aparato_tipo'])
+        c.drawString(350, y, f"{o['cliente_nombre']} {o['cliente_apellido']}")
+        y -= 15
+
+    c.save()
+    return filename
+
