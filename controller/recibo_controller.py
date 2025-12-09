@@ -51,118 +51,136 @@ def generar_recibos_mes(anyo: int, mes: int, importe_cuota: float):
     return creados
 
 
-def listar_recibos_mes(anyo: int, mes: int):
-    """Devuelve una lista de objetos Recibo para un mes/año concreto."""
-    conn = crear_conexion()
-    if conn is None:
-        return []
-
-    recibos = []
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT *
-            FROM Recibo
-            WHERE periodo_anyo = ? AND periodo_mes = ?
-            ORDER BY cliente_id;
-            """,
-            (anyo, mes)
-        )
-        filas = cursor.fetchall()
-        for fila in filas:
-            recibos.append(
-                Recibo(
-                    recibo_id=fila["recibo_id"],
-                    cliente_id=fila["cliente_id"],
-                    periodo_anyo=fila["periodo_anyo"],
-                    periodo_mes=fila["periodo_mes"],
-                    fecha_generacion=fila["fecha_generacion"],
-                    importe=fila["importe"],
-                    estado=fila["estado"]
-                )
-            )
-    finally:
-        conn.close()
-
-    return recibos
-
-
-def listar_recibos_cliente(cliente_id: int):
-    """Devuelve una lista de recibos de un cliente."""
-    conn = crear_conexion()
-    if conn is None:
-        return []
-
-    recibos = []
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT *
-            FROM Recibo
-            WHERE cliente_id = ?
-            ORDER BY periodo_anyo DESC, periodo_mes DESC;
-            """,
-            (cliente_id,)
-        )
-        filas = cursor.fetchall()
-        for fila in filas:
-            recibos.append(
-                Recibo(
-                    recibo_id=fila["recibo_id"],
-                    cliente_id=fila["cliente_id"],
-                    periodo_anyo=fila["periodo_anyo"],
-                    periodo_mes=fila["periodo_mes"],
-                    fecha_generacion=fila["fecha_generacion"],
-                    importe=fila["importe"],
-                    estado=fila["estado"]
-                )
-            )
-    finally:
-        conn.close()
-
-    return recibos
-
-
-def obtener_morosos_mes(anyo: int, mes: int):
+def obtener_estado_pagos_mes(anyo: int, mes: int):
     """
-    Devuelve una lista de clientes (id, nombre, apellido, dni) que tienen
-    recibos 'pendiente' para ese mes/año.
+    Devuelve una lista de diccionarios con el estado de pago de TODOS los clientes
+    para el mes/año dado.
+    Si no existe recibo, se considera 'pendiente' (virtual).
     """
     conn = crear_conexion()
     if conn is None:
         return []
 
-    morosos = []
+    resultados = []
     try:
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT DISTINCT c.cliente_id, c.nombre, c.apellido, c.dni
+        # LEFT JOIN de Cliente a Recibo filtrando por el mes/año especifico en el JOIN
+        # OJO: Para hacer el left join correctamente con filtros en la tabla derecha,
+        # necesitamos mover las condiciones de Recibo al ON o usar subquery.
+        # SQLite soporta condiciones complejas en ON.
+        
+        query = """
+            SELECT 
+                c.cliente_id, c.nombre, c.apellido, c.dni,
+                r.recibo_id, r.importe, r.estado
             FROM Cliente c
-            JOIN Recibo r ON c.cliente_id = r.cliente_id
-            WHERE r.periodo_anyo = ?
-              AND r.periodo_mes = ?
-              AND r.estado = 'pendiente'
+            LEFT JOIN Recibo r ON c.cliente_id = r.cliente_id 
+                               AND r.periodo_anyo = ? 
+                               AND r.periodo_mes = ?
             ORDER BY c.apellido, c.nombre;
-            """,
-            (anyo, mes)
-        )
+        """
+        cursor.execute(query, (anyo, mes))
         filas = cursor.fetchall()
+        
         for fila in filas:
-            morosos.append(
-                {
-                    "cliente_id": fila["cliente_id"],
-                    "nombre": fila["nombre"],
-                    "apellido": fila["apellido"],
-                    "dni": fila["dni"],
-                }
-            )
+            estado = fila["estado"] if fila["estado"] else "pendiente"
+            importe = fila["importe"] if fila["importe"] is not None else 40.0 # Default sugerido
+            
+            resultados.append({
+                "cliente_id": fila["cliente_id"],
+                "nombre": fila["nombre"],
+                "apellido": fila["apellido"],
+                "dni": fila["dni"],
+                "recibo_id": fila["recibo_id"], # Puede ser None
+                "importe": importe,
+                "estado": estado
+            })
     finally:
         conn.close()
 
-    return morosos
+    return resultados
+
+
+def exportar_morosos_pdf(anyo: int, mes: int) -> str:
+    """
+    Genera un PDF con la lista de morosos (estado 'pendiente') para el mes indicado.
+    Usa obtener_estado_pagos_mes para determinar quién debe.
+    """
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import A4
+    
+    todos = obtener_estado_pagos_mes(anyo, mes)
+    # Filtrar solo 'pendiente'
+    morosos = [c for c in todos if c['estado'] == 'pendiente']
+    
+    filename = f"morosos_{anyo}_{mes}.pdf"
+    
+    c = canvas.Canvas(filename, pagesize=A4)
+    width, height = A4
+    
+    # Encabezado
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, height - 50, "Listado de Morosos - GymForTheMoment")
+    c.setFont("Helvetica", 12)
+    c.drawString(50, height - 70, f"Periodo: {mes}/{anyo}")
+    
+    # Tabla
+    y = height - 100
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(50, y, "ID")
+    c.drawString(100, y, "Nombre")
+    c.drawString(300, y, "DNI")
+    c.drawString(450, y, "Deuda (Est.)")
+    
+    y -= 20
+    c.setFont("Helvetica", 10)
+    
+    if not morosos:
+        c.drawString(50, y, "No hay morosos para este periodo. ¡Todo pagado!")
+    
+    for m in morosos:
+        if y < 50:
+            c.showPage()
+            y = height - 50
+        
+        c.drawString(50, y, str(m['cliente_id']))
+        c.drawString(100, y, f"{m['nombre']} {m['apellido']}")
+        c.drawString(300, y, m['dni'])
+        c.drawString(450, y, f"{m['importe']} €")
+        y -= 15
+        
+    c.save()
+    return filename
+
+
+def generar_recibo_individual(cliente_id: int, anyo: int, mes: int, importe: float) -> int | None:
+    """
+    Genera un único recibo para un cliente específico.
+    Devuelve el ID del recibo creado, o None si error.
+    """
+    from model.conexion import crear_conexion # Ensure import if needed, though usually at top
+    conn = crear_conexion()
+    if conn is None:
+        return None
+
+    try:
+        with conn:
+            cursor = conn.cursor()
+            fecha_generacion = date.today().isoformat()
+            cursor.execute(
+                """
+                INSERT INTO Recibo (cliente_id, periodo_anyo, periodo_mes,
+                                    fecha_generacion, importe, estado)
+                VALUES (?, ?, ?, ?, ?, 'pendiente');
+                """,
+                (cliente_id, anyo, mes, fecha_generacion, importe)
+            )
+            return cursor.lastrowid
+    except Exception as e:
+        print(f"Error generando recibo individual: {e}")
+        return None
+    finally:
+        conn.close()
 
 
 def marcar_recibo_como_pagado(recibo_id: int):
@@ -170,6 +188,7 @@ def marcar_recibo_como_pagado(recibo_id: int):
     Marca un recibo como pagado (solo cambia estado).
     El registro de pago como tal lo hace pago_controller.registrar_pago().
     """
+    from model.conexion import crear_conexion # Ensure import if needed
     conn = crear_conexion()
     if conn is None:
         return False
@@ -188,3 +207,4 @@ def marcar_recibo_como_pagado(recibo_id: int):
             return cursor.rowcount > 0
     finally:
         conn.close()
+
