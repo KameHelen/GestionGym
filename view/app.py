@@ -13,7 +13,10 @@ from controller.sesion_controller import (
     listar_sesiones_dia,
     obtener_ocupacion_diaria,
     cancelar_sesion,
-    exportar_sesiones_pdf
+    exportar_sesiones_pdf,
+    obtener_tipos_aparatos,
+    obtener_slots_disponibles,
+    asignar_aparato_disponible
 )
 from controller.recibo_controller import (
     generar_recibo_individual,
@@ -350,47 +353,27 @@ class ReservasView(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
         
-        # Grid layout: Izquierda (Dashboard/Form) - Derecha (Lista)
         self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=2)
+        self.grid_columnconfigure(1, weight=3)
         self.grid_rowconfigure(0, weight=1)
 
-        # --- Columna Izquierda: Formulario y Acciones ---
+        # --- Columna Izquierda: Acciones ---
         self.left_col = ctk.CTkFrame(self)
         self.left_col.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-
-        ctk.CTkLabel(self.left_col, text="Nueva Reserva", font=ctk.CTkFont(size=18, weight="bold")).pack(padx=20, pady=20, anchor="w")
-
-        # Form fields
-        ctk.CTkLabel(self.left_col, text="ID Aparato").pack(padx=20, anchor="w")
-        self.ent_aparato = ctk.CTkEntry(self.left_col)
-        self.ent_aparato.pack(padx=20, pady=(0, 10), fill="x")
-
-        ctk.CTkLabel(self.left_col, text="ID Cliente").pack(padx=20, anchor="w")
-        self.ent_cliente = ctk.CTkEntry(self.left_col)
-        self.ent_cliente.pack(padx=20, pady=(0, 10), fill="x")
-
-        ctk.CTkLabel(self.left_col, text="Fecha").pack(padx=20, anchor="w")
-        # CALENDARIO MÁS GRANDE
-        self.ent_fecha = DateEntry(self.left_col, width=12, background='darkblue', 
-                                   foreground='white', borderwidth=2, date_pattern='yyyy-mm-dd',
-                                   font=("Roboto", 12))
-        self.ent_fecha.pack(padx=20, pady=(0, 10), anchor="w")
         
-        ctk.CTkLabel(self.left_col, text="Hora (HH:MM)").pack(padx=20, anchor="w")
-        self.ent_hora = ctk.CTkEntry(self.left_col, placeholder_text="09:00, 09:30...")
-        self.ent_hora.pack(padx=20, pady=(0, 20), fill="x")
+        ctk.CTkLabel(self.left_col, text="Acciones Reservas", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=20)
 
-        ctk.CTkButton(self.left_col, text="Confirmar Reserva", command=self.add_reserva).pack(padx=20, fill="x")
+        # Botón Wizard
+        self.btn_new = ctk.CTkButton(self.left_col, text="Nueva Reserva", height=40, font=ctk.CTkFont(size=14, weight="bold"), command=self.abrir_wizard_cliente)
+        self.btn_new.pack(padx=20, pady=20, fill="x")
 
         # Separator
         ttk.Separator(self.left_col, orient="horizontal").pack(fill="x", pady=20, padx=10)
 
-        ctk.CTkLabel(self.left_col, text="Gestión de Sesión", font=ctk.CTkFont(size=16, weight="bold")).pack(padx=20, anchor="w")
+        ctk.CTkLabel(self.left_col, text="Cancelar Sesión", font=ctk.CTkFont(size=16, weight="bold")).pack(padx=20, anchor="w")
         self.ent_cancel_id = ctk.CTkEntry(self.left_col, placeholder_text="ID Sesión")
         self.ent_cancel_id.pack(padx=20, pady=10, fill="x")
-        ctk.CTkButton(self.left_col, text="Cancelar Sesión", fg_color="#D32F2F", hover_color="#B71C1C", command=self.cancel_reserva).pack(padx=20, fill="x")
-
+        ctk.CTkButton(self.left_col, text="Cancelar", fg_color="#D32F2F", hover_color="#B71C1C", command=self.cancel_reserva).pack(padx=20, fill="x")
 
         # --- Columna Derecha: Visualización ---
         self.right_col = ctk.CTkFrame(self)
@@ -401,7 +384,6 @@ class ReservasView(ctk.CTkFrame):
         top_bar.pack(fill="x", padx=20, pady=20)
         
         ctk.CTkLabel(top_bar, text="Agenda del Día:").pack(side="left", padx=5)
-        # CALENDARIO MÁS GRANDE
         self.filter_date = DateEntry(top_bar, width=12, background='darkblue', 
                                      foreground='white', borderwidth=2, date_pattern='yyyy-mm-dd',
                                      font=("Roboto", 12))
@@ -409,7 +391,6 @@ class ReservasView(ctk.CTkFrame):
         
         ctk.CTkButton(top_bar, text="Buscar", width=60, command=self.load_sesiones).pack(side="left", padx=5)
         ctk.CTkButton(top_bar, text="Exportar PDF", width=100, fg_color="green", command=self.export_pdf).pack(side="right")
-
 
         # Treeview
         cols = ("id", "hora", "aparato", "cliente")
@@ -420,21 +401,26 @@ class ReservasView(ctk.CTkFrame):
         self.tree.heading("cliente", text="Cliente")
         self.tree.column("id", width=40, anchor="center")
         self.tree.column("hora", width=60, anchor="center")
-        
         self.tree.pack(fill="both", expand=True, padx=20, pady=(0, 10))
 
         # Texto detalle
         self.txt_detail = ctk.CTkTextbox(self.right_col, height=100)
         self.txt_detail.pack(fill="x", padx=20, pady=10)
 
-    def add_reserva(self):
-        try:
-            crear_sesion(int(self.ent_aparato.get()), int(self.ent_cliente.get()), 
-                         self.ent_fecha.get_date().strftime("%Y-%m-%d"), self.ent_hora.get())
-            messagebox.showinfo("Éxito", "Reserva creada")
-            self.load_sesiones()
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
+    def load_sesiones(self):
+        date = self.filter_date.get_date().strftime("%Y-%m-%d")
+        for i in self.tree.get_children(): self.tree.delete(i)
+        
+        ocupacion = obtener_ocupacion_diaria(date)
+        
+        for o in ocupacion:
+            self.tree.insert("", "end", values=(o['sesion_id'], o['hora_inicio'], f"{o['aparato_codigo']} ({o['aparato_tipo']})", f"{o['cliente_id']} - {o['cliente_nombre']}"))
+            
+        self.txt_detail.delete("1.0", "end")
+        if not ocupacion:
+            self.txt_detail.insert("end", "No hay sesiones programada para hoy.")
+        else:
+            self.txt_detail.insert("end", f"Total sesiones: {len(ocupacion)}")
 
     def cancel_reserva(self):
         if cancelar_sesion(int(self.ent_cancel_id.get() or 0)):
@@ -443,28 +429,153 @@ class ReservasView(ctk.CTkFrame):
         else:
             messagebox.showerror("Error", "No se encontró la sesión")
 
-    def load_sesiones(self):
-        date = self.filter_date.get_date().strftime("%Y-%m-%d")
-        for i in self.tree.get_children(): self.tree.delete(i)
-        
-        ocupacion = obtener_ocupacion_diaria(date)
-        
-        # Llenar tree
-        for o in ocupacion:
-            self.tree.insert("", "end", values=(o['sesion_id'], o['hora_inicio'], f"{o['aparato_codigo']} ({o['aparato_tipo']})", f"{o['cliente_id']} - {o['cliente_nombre']}"))
-            
-        # Llenar texto
-        self.txt_detail.delete("1.0", "end")
-        if not ocupacion:
-            self.txt_detail.insert("end", "No hay sesiones programada para hoy.")
-        else:
-            for o in ocupacion:
-                self.txt_detail.insert("end", f"[{o['hora_inicio']}] {o['aparato_tipo']} - {o['cliente_nombre']} {o['cliente_apellido']}\n")
-
     def export_pdf(self):
         try:
-            f = exportar_sesiones_pdf(self.filter_date.get_date().strftime("%Y-%m-%d"))
+            date = self.filter_date.get_date().strftime("%Y-%m-%d")
+            f = exportar_sesiones_pdf(date)
             messagebox.showinfo("PDF", f"Archivo generado: {f}")
+        except Exception as e: messagebox.showerror("Error", str(e))
+
+    # --- WIZARD POPUPS ---
+
+    def abrir_wizard_cliente(self):
+        # Paso 1: Seleccionar Cliente con Buscador
+        self.win_step1 = ctk.CTkToplevel(self)
+        self.win_step1.title("Paso 1: Identificación")
+        self.win_step1.geometry("500x400")
+        self.win_step1.grab_set()
+
+        ctk.CTkLabel(self.win_step1, text="Buscar Cliente", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(20, 10))
+
+        # Buscador
+        self.ent_search = ctk.CTkEntry(self.win_step1, placeholder_text="Escribe nombre o DNI...", width=300)
+        self.ent_search.pack(pady=5)
+        self.ent_search.bind("<KeyRelease>", self.filtrar_clientes)
+
+        # Lista Resultados
+        cols = ("id", "nombre", "dni")
+        self.tree_clients = ttk.Treeview(self.win_step1, columns=cols, show="headings", height=10)
+        self.tree_clients.heading("id", text="ID")
+        self.tree_clients.heading("nombre", text="Nombre")
+        self.tree_clients.heading("dni", text="DNI")
+        self.tree_clients.column("id", width=50, anchor="center")
+        self.tree_clients.column("nombre", width=200)
+        self.tree_clients.column("dni", width=100)
+        self.tree_clients.pack(pady=10, padx=20, fill="both", expand=True)
+
+        ctk.CTkButton(self.win_step1, text="Siguiente >>", command=self.ir_paso_2).pack(pady=20)
+        
+        # Cargar todos inicial
+        self.todos_clientes = []
+        try:
+            self.todos_clientes = listar_clientes()
+            self.filtrar_clientes()
+        except: pass
+
+    def filtrar_clientes(self, event=None):
+        query = self.ent_search.get().lower()
+        
+        for item in self.tree_clients.get_children():
+            self.tree_clients.delete(item)
+            
+        for c in self.todos_clientes:
+            full_str = f"{c.nombre} {c.apellido} {c.dni}".lower()
+            if query in full_str:
+                self.tree_clients.insert("", "end", values=(c.cliente_id, f"{c.apellido}, {c.nombre}", c.dni))
+
+    def ir_paso_2(self):
+        sel = self.tree_clients.selection()
+        if not sel:
+            messagebox.showwarning("Atención", "Selecciona un cliente de la lista.")
+            return
+        
+        item = self.tree_clients.item(sel[0])
+        vals = item['values']
+        
+        cli_id = int(vals[0])
+        cli_nombre = vals[1]
+        
+        self.win_step1.destroy()
+        
+        # Paso 2
+        self.abrir_wizard_detalles(cli_id, cli_nombre)
+
+    def abrir_wizard_detalles(self, cli_id, cli_nombre):
+        self.win_step2 = ctk.CTkToplevel(self)
+        self.win_step2.title("Paso 2: Detalles Reserva")
+        self.win_step2.geometry("400x400")
+        self.win_step2.grab_set()
+        
+        self.wiz_cli_id = cli_id 
+
+        ctk.CTkLabel(self.win_step2, text=f"Reservando para:\n{cli_nombre}", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=10)
+
+        # Aparato
+        ctk.CTkLabel(self.win_step2, text="Tipo de Aparato:").pack(pady=(10,0))
+        self.cmb_tipo_wiz = ctk.CTkComboBox(self.win_step2, width=250, command=self.actualizar_slots_wiz)
+        self.cmb_tipo_wiz.pack(pady=5)
+        
+        # Cargar Tipos
+        try:
+            tipos = obtener_tipos_aparatos()
+            self.cmb_tipo_wiz.configure(values=tipos)
+            if tipos: self.cmb_tipo_wiz.set(tipos[0])
+        except: pass
+
+        # Fecha
+        ctk.CTkLabel(self.win_step2, text="Fecha:").pack(pady=(10,0))
+        self.ent_fecha_wiz = DateEntry(self.win_step2, width=12, background='darkblue', 
+                                       foreground='white', borderwidth=2, date_pattern='yyyy-mm-dd')
+        self.ent_fecha_wiz.pack(pady=5)
+        # Fix date entry binding
+        self.ent_fecha_wiz.bind("<<DateEntrySelected>>", self.actualizar_slots_wiz)
+
+        # Hora
+        ctk.CTkLabel(self.win_step2, text="Hora:").pack(pady=(10,0))
+        self.cmb_hora_wiz = ctk.CTkComboBox(self.win_step2, width=250)
+        self.cmb_hora_wiz.pack(pady=5)
+
+        ctk.CTkButton(self.win_step2, text="Confirmar Reserva", fg_color="green", command=self.finalizar_reserva).pack(pady=30)
+        
+        # Init slots
+        self.actualizar_slots_wiz()
+
+    def actualizar_slots_wiz(self, event=None):
+        try:
+            tipo = self.cmb_tipo_wiz.get()
+            fecha = self.ent_fecha_wiz.get_date().strftime("%Y-%m-%d")
+            
+            if not tipo: return
+
+            slots = obtener_slots_disponibles(fecha, tipo)
+            self.cmb_hora_wiz.configure(values=slots)
+            if slots: 
+                self.cmb_hora_wiz.set(slots[0])
+            else:
+                self.cmb_hora_wiz.set("No disponible")
+        except: pass
+
+    def finalizar_reserva(self):
+        try:
+            tipo = self.cmb_tipo_wiz.get()
+            fecha = self.ent_fecha_wiz.get_date().strftime("%Y-%m-%d")
+            hora = self.cmb_hora_wiz.get()
+            
+            if not hora or hora == "No disponible":
+                messagebox.showerror("Error", "Hora no disponible")
+                return
+            
+            aparato_id = asignar_aparato_disponible(tipo, fecha, hora)
+            if not aparato_id:
+                messagebox.showerror("Error", "No se encontró aparato libre.")
+                return
+                
+            crear_sesion(aparato_id, self.wiz_cli_id, fecha, hora)
+            
+            messagebox.showinfo("Éxito", "Reserva completada.")
+            self.win_step2.destroy()
+            self.load_sesiones() 
+            
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
@@ -482,7 +593,6 @@ class CobrosView(ctk.CTkFrame):
         
         ctk.CTkLabel(top, text="Periodo de Cobro:", font=ctk.CTkFont(weight="bold")).pack(side="left")
         
-        # Fecha actual por defecto
         today = date.today()
         
         self.ent_y = ctk.CTkEntry(top, width=60)
@@ -498,7 +608,7 @@ class CobrosView(ctk.CTkFrame):
         ctk.CTkButton(top, text="Exportar Pendientes PDF", fg_color="#D32F2F", command=self.export_morosos).pack(side="right", padx=10)
 
         # --- Tree ---
-        cols = ("id", "nombre", "dni", "importe", "estado", "recibo_id") # recibo_id hidden ideally
+        cols = ("id", "nombre", "dni", "importe", "estado", "recibo_id") 
         self.tree = ttk.Treeview(self.card, columns=cols, show="headings", height=20)
         
         self.tree.heading("id", text="ID")
@@ -512,20 +622,17 @@ class CobrosView(ctk.CTkFrame):
         self.tree.column("dni", width=100)
         self.tree.column("importe", width=80, anchor="e")
         self.tree.column("estado", width=100, anchor="center")
-        self.tree.column("recibo_id", width=0, stretch=False) # Oculto
+        self.tree.column("recibo_id", width=0, stretch=False) 
         
         self.tree.pack(fill="both", expand=True, padx=20, pady=20)
         
-        # Evento doble click para pagar
         self.tree.bind("<Double-1>", self.on_double_click)
         
         ctk.CTkLabel(self.card, text="* Doble click en un cliente para gestionar el pago.", text_color="gray").pack(pady=10)
 
-        # Cargar inicial
         self.cargar_estado()
 
     def cargar_estado(self):
-        # Limpiar
         for i in self.tree.get_children(): self.tree.delete(i)
         
         try:
@@ -535,7 +642,6 @@ class CobrosView(ctk.CTkFrame):
             datos = obtener_estado_pagos_mes(y, m)
             
             for d in datos:
-                # Si recibo_id es None, guardamos "None" string para recuperarlo luego o 0
                 rid = d['recibo_id'] if d['recibo_id'] else 0
                 self.tree.insert("", "end", values=(
                     d['cliente_id'], 
@@ -562,15 +668,13 @@ class CobrosView(ctk.CTkFrame):
             messagebox.showinfo("Info", "Este cliente ya está al corriente de pago.")
             return
             
-        # Abrir popup de pago
         self.abrir_popup_pago(cliente_id, nombre, recibo_id)
 
     def abrir_popup_pago(self, cliente_id, nombre, recibo_id):
-        # Crear Toplevel
         top = ctk.CTkToplevel(self)
         top.title("Registrar Pago")
         top.geometry("300x250")
-        top.grab_set() # Modal
+        top.grab_set() 
         
         ctk.CTkLabel(top, text="Registrar Pago", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=10)
         ctk.CTkLabel(top, text=f"Cliente: {nombre}").pack(pady=5)
@@ -586,12 +690,10 @@ class CobrosView(ctk.CTkFrame):
                 y = int(self.ent_y.get())
                 m = int(self.ent_m.get())
                 
-                # Si no existe recibo, crearlo primero
                 rid = recibo_id
                 if rid == 0:
                     rid = generar_recibo_individual(cliente_id, y, m, importe)
                 
-                # Registrar pago
                 if rid and rid != 0:
                     registrar_pago(rid)
                     messagebox.showinfo("Éxito", "Pago registrado correctamente.")

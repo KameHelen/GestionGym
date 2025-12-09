@@ -263,3 +263,106 @@ def exportar_sesiones_pdf(fecha: str) -> str:
     c.save()
     return filename
 
+
+# ---------- NUEVAS FUNCIONES FASE 3: RESERVAS DINAMICAS ----------
+
+def obtener_tipos_aparatos() -> list[str]:
+    """
+    Devuelve una lista de strings con los tipos de aparatos únicos.
+    Ej: ['Cinta', 'Bicicleta', 'Pesas']
+    """
+    conn = crear_conexion()
+    if conn is None:
+        return []
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT tipo FROM Aparato ORDER BY tipo;")
+        return [fila[0] for fila in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def obtener_slots_disponibles(fecha: str, tipo_aparato: str) -> list[str]:
+    """
+    Devuelve lista de horas (HH:MM) disponibles para un tipo de aparato en una fecha.
+    Rango 08:00 a 22:00, intervalos de 30 min.
+    Un slot es disponible si: (sesiones_en_ese_slot_y_tipo < total_aparatos_de_ese_tipo).
+    """
+    if not es_fecha_laborable(fecha):
+        return []
+
+    conn = crear_conexion()
+    if conn is None:
+        return []
+
+    slots_disponibles = []
+    try:
+        cursor = conn.cursor()
+        
+        # 1. Contar total de aparatos del tipo
+        cursor.execute("SELECT COUNT(*) FROM Aparato WHERE tipo = ?", (tipo_aparato,))
+        total_aparatos = cursor.fetchone()[0]
+        
+        if total_aparatos == 0:
+            return []
+
+        # 2. Generar slots teóricos (08:00 a 22:00)
+        # 08:00, 08:30, ..., 22:00
+        slots = []
+        for h in range(8, 22 + 1): # Hasta 22 inclusive
+            slots.append(f"{h:02d}:00")
+            if h < 22: # 22:30 quizás ya no si cierra a las 22:00, asumamos última reserva 22:00
+                slots.append(f"{h:02d}:30")
+        
+        # 3. Verificar cada slot
+        # Podríamos hacer una query agrupadora, pero iterar slots es simple para este volumen.
+        query_ocupacion = """
+            SELECT COUNT(s.sesion_id)
+            FROM Sesion s
+            JOIN Aparato a ON s.aparato_id = a.aparato_id
+            WHERE s.fecha = ? AND s.hora_inicio = ? AND a.tipo = ?
+        """
+        
+        for slot in slots:
+            cursor.execute(query_ocupacion, (fecha, slot, tipo_aparato))
+            ocupacion = cursor.fetchone()[0]
+            
+            if ocupacion < total_aparatos:
+                slots_disponibles.append(slot)
+                
+    finally:
+        conn.close()
+        
+    return slots_disponibles
+
+
+def asignar_aparato_disponible(tipo_aparato: str, fecha: str, hora: str) -> int | None:
+    """
+    Busca un aparato concreto del tipo especificado que esté libre en esa fecha/hora.
+    Devuelve su ID o None si no hay hueco (aunque debería haber si se llamó tras comprobar slots).
+    """
+    conn = crear_conexion()
+    if conn is None:
+        return None
+        
+    try:
+        cursor = conn.cursor()
+        # Buscamos IDs de aparatos de ese tipo que NO estén en la lista de ocupados
+        query = """
+            SELECT a.aparato_id
+            FROM Aparato a
+            WHERE a.tipo = ?
+            AND a.aparato_id NOT IN (
+                SELECT s.aparato_id
+                FROM Sesion s
+                WHERE s.fecha = ? AND s.hora_inicio = ?
+            )
+            LIMIT 1;
+        """
+        cursor.execute(query, (tipo_aparato, fecha, hora))
+        fila = cursor.fetchone()
+        return fila[0] if fila else None
+    finally:
+        conn.close()
+
