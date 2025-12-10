@@ -2,12 +2,13 @@
 
 import tkinter as tk
 from tkinter import ttk, messagebox
+import re
 import customtkinter as ctk
 from tkcalendar import DateEntry
 from PIL import Image, ImageTk
 
 from controller.aparato_controller import listar_aparatos
-from controller.cliente_controller import crear_cliente, listar_clientes
+from controller.cliente_controller import crear_cliente, listar_clientes, obtener_cliente_por_dni
 from controller.sesion_controller import (
     crear_sesion,
     listar_sesiones_dia,
@@ -90,7 +91,7 @@ class App(ctk.CTk):
         # Apariencia Mode
         self.lbl_mode = ctk.CTkLabel(self.sidebar_frame, text="Apariencia:", anchor="w")
         self.lbl_mode.grid(row=7, column=0, padx=20, pady=(10, 0))
-        self.option_mode = ctk.CTkOptionMenu(self.sidebar_frame, values=["System", "Light", "Dark"],
+        self.option_mode = ctk.CTkOptionMenu(self.sidebar_frame, values=["Sistema", "Claro", "Oscuro"],
                                              command=self.change_appearance_mode_event)
         self.option_mode.grid(row=8, column=0, padx=20, pady=(10, 20))
 
@@ -103,28 +104,11 @@ class App(ctk.CTk):
         # Diccionario de vistas
         self.frames = {}
         
-        # Treeview Style
-        style = ttk.Style()
-        style.theme_use("default")
-        style.configure("Treeview", 
-                        background="#2a2d2e", 
-                        foreground="white", 
-                        fieldbackground="#343638", 
-                        bordercolor="#343638", 
-                        borderwidth=0, 
-                        font=("Roboto", 12), 
-                        rowheight=30)
-        style.configure("Treeview.Heading", 
-                        background="#565b5e", 
-                        foreground="white", 
-                        relief="flat", 
-                        font=("Roboto", 13, "bold"))
-        style.map("Treeview", 
-                  background=[("selected", "#1f538d")])
+        # Treeview Style Init
+        self.update_treeview_style("System") # Default init
 
         # Inicializar vistas
         self.frames["aparatos"] = AparatosView(self.main_container)
-
         self.frames["clientes"] = ClientesView(self.main_container)
         self.frames["reservas"] = ReservasView(self.main_container)
         self.frames["cobros"] = CobrosView(self.main_container)
@@ -132,24 +116,69 @@ class App(ctk.CTk):
         self.select_frame("aparatos")
 
     def select_frame(self, name):
-        # Reset buttons Style to 'transparent'
+        # Reset buttons Style
         buttons = [self.btn_aparatos, self.btn_clientes, self.btn_reservas, self.btn_cobros]
         for btn in buttons:
             btn.configure(fg_color="transparent")
         
-        # Highlight selected
         if name == "aparatos": self.btn_aparatos.configure(fg_color=("gray75", "gray25"))
         if name == "clientes": self.btn_clientes.configure(fg_color=("gray75", "gray25"))
         if name == "reservas": self.btn_reservas.configure(fg_color=("gray75", "gray25"))
         if name == "cobros": self.btn_cobros.configure(fg_color=("gray75", "gray25"))
 
-        # Show frame
         frame = self.frames[name]
         frame.grid(row=0, column=0, sticky="nsew")
         frame.tkraise()
 
     def change_appearance_mode_event(self, new_appearance_mode):
-        ctk.set_appearance_mode(new_appearance_mode)
+        map_mode = {"Sistema": "System", "Claro": "Light", "Oscuro": "Dark"}
+        mode = map_mode.get(new_appearance_mode, "System")
+        ctk.set_appearance_mode(mode)
+        self.update_treeview_style(mode)
+
+    def update_treeview_style(self, mode):
+        style = ttk.Style()
+        style.theme_use("default")
+        
+        # Detect actual mode string for "System"
+        if mode == "System":
+            mode = ctk.get_appearance_mode()
+
+        if mode == "Light":
+            # Estilo Claro
+            bg_color = "#ffffff"
+            fg_color = "black"
+            field_bg = "#f0f0f0"
+            select_bg = "#3a7ebf"
+            header_bg = "#e1e1e1"
+            header_fg = "black"
+        else:
+            # Estilo Oscuro
+            bg_color = "#2a2d2e"
+            fg_color = "white"
+            field_bg = "#343638"
+            select_bg = "#1f538d"
+            header_bg = "#565b5e"
+            header_fg = "white"
+
+        style.configure("Treeview", 
+                        background=bg_color, 
+                        foreground=fg_color, 
+                        fieldbackground=field_bg, 
+                        bordercolor=field_bg, 
+                        borderwidth=0, 
+                        font=("Roboto", 12), 
+                        rowheight=30)
+        
+        style.configure("Treeview.Heading", 
+                        background=header_bg, 
+                        foreground=header_fg, 
+                        relief="flat", 
+                        font=("Roboto", 13, "bold"))
+        
+        style.map("Treeview", 
+                  background=[("selected", select_bg)],
+                  foreground=[("selected", "white")])
 
 
 # ================== CLASES DE VISTA HIJAS ==================
@@ -325,9 +354,44 @@ class ClientesView(ctk.CTkFrame):
         self.load_clientes()
 
     def add_cliente(self):
+        dni = self.entry_dni.get().strip()
+        nombre = self.entry_nombre.get().strip()
+        apellido = self.entry_apellido.get().strip()
+        email = self.entry_email.get().strip()
+        tel = self.entry_tel.get().strip()
+        fecha = self.entry_fecha.get_date().strftime("%Y-%m-%d")
+
+        # --- VALIDACIONES ---
+        # 0. DNI Duplicado
+        if obtener_cliente_por_dni(dni):
+            messagebox.showwarning("Cliente ya registrado", f"El cliente con DNI {dni} ya existe en la base de datos.")
+            return
+
+        # 1. DNI: 8 números + 1 letra
+        if not re.match(r"^\d{8}[A-Za-z]$", dni):
+            messagebox.showerror("Error de Validación", "El DNI debe tener 8 números seguidos de una letra (Ej: 12345678X).")
+            return
+
+        # 2. Nombre y Apellido: Solo letras y espacios
+        if not re.match(r"^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$", nombre):
+            messagebox.showerror("Error de Validación", "El Nombre solo puede contener letras.")
+            return
+        if not re.match(r"^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$", apellido):
+            messagebox.showerror("Error de Validación", "El Apellido solo puede contener letras.")
+            return
+
+        # 3. Email: Debe contener @
+        if "@" not in email:
+            messagebox.showerror("Error de Validación", "El Email debe ser válido (contener @).")
+            return
+
+        # 4. Teléfono: Solo números
+        if not re.match(r"^\d+$", tel):
+            messagebox.showerror("Error de Validación", "El Teléfono solo debe contener números.")
+            return
+
         try:
-            cli = crear_cliente(self.entry_dni.get(), self.entry_nombre.get(), self.entry_apellido.get(), 
-                          self.entry_email.get(), self.entry_tel.get(), self.entry_fecha.get_date().strftime("%Y-%m-%d"))
+            cli = crear_cliente(dni, nombre, apellido, email, tel, fecha)
             
             # Generar primer recibo (mes actual)
             hoy = date.today()
@@ -406,6 +470,9 @@ class ReservasView(ctk.CTkFrame):
         # Texto detalle
         self.txt_detail = ctk.CTkTextbox(self.right_col, height=100)
         self.txt_detail.pack(fill="x", padx=20, pady=10)
+
+        # Cargar sesiones del día al iniciar
+        self.load_sesiones()
 
     def load_sesiones(self):
         date = self.filter_date.get_date().strftime("%Y-%m-%d")
@@ -605,6 +672,11 @@ class CobrosView(ctk.CTkFrame):
         
         ctk.CTkButton(top, text="Cargar Estado", command=self.cargar_estado).pack(side="left", padx=10)
         
+        # Buscador
+        self.ent_search = ctk.CTkEntry(top, placeholder_text="Buscar cliente...", width=200)
+        self.ent_search.pack(side="left", padx=10)
+        self.ent_search.bind("<KeyRelease>", self.filtrar_tabla)
+
         ctk.CTkButton(top, text="Exportar Pendientes PDF", fg_color="#D32F2F", command=self.export_morosos).pack(side="right", padx=10)
 
         # --- Tree ---
@@ -630,18 +702,31 @@ class CobrosView(ctk.CTkFrame):
         
         ctk.CTkLabel(self.card, text="* Doble click en un cliente para gestionar el pago.", text_color="gray").pack(pady=10)
 
+        self.datos_pagos_cache = [] # Cache para filtrado
         self.cargar_estado()
 
     def cargar_estado(self):
-        for i in self.tree.get_children(): self.tree.delete(i)
-        
         try:
             y = int(self.ent_y.get())
             m = int(self.ent_m.get())
             
-            datos = obtener_estado_pagos_mes(y, m)
+            self.datos_pagos_cache = obtener_estado_pagos_mes(y, m)
+            self.filtrar_tabla()
             
-            for d in datos:
+        except Exception as e:
+            messagebox.showerror("Error", f"Error cargando datos: {e}")
+
+    def filtrar_tabla(self, event=None):
+        query = self.ent_search.get().lower()
+        
+        # Limpiar tree
+        for i in self.tree.get_children(): self.tree.delete(i)
+        
+        # Filtrar y repoblar
+        for d in self.datos_pagos_cache:
+            full_str = f"{d['nombre']} {d['apellido']} {d['dni']}".lower()
+            
+            if query in full_str:
                 rid = d['recibo_id'] if d['recibo_id'] else 0
                 self.tree.insert("", "end", values=(
                     d['cliente_id'], 
@@ -651,8 +736,6 @@ class CobrosView(ctk.CTkFrame):
                     d['estado'],
                     rid
                 ))
-        except Exception as e:
-            messagebox.showerror("Error", f"Error cargando datos: {e}")
 
     def on_double_click(self, event):
         item = self.tree.selection()
